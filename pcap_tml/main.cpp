@@ -42,12 +42,25 @@ std::string getProtocolTypeAsString(pcpp::ProtocolType protocolType)
     }
 }
 
+std::string getCommonInfo(pcpp::Layer* layer, std::string indent) {
+    std::stringstream res;
+
+    res << indent
+        << "Layer type: " << getProtocolTypeAsString(layer->getProtocol()) << "; "
+        << "Total data: " << layer->getDataLen() << " [bytes]; "
+        << "Layer data: " << layer->getHeaderLen() << " [bytes]; "
+        << "Layer payload: " << layer->getLayerPayloadSize() << " [bytes]"
+        << std::endl;
+
+    return res.str();
+}
+
 std::string parseEthernet(pcpp::Layer* layer, std::string indent)
 {
     pcpp::EthLayer* ethernetLayer = static_cast<pcpp::EthLayer*>(layer);
     std::stringstream res;
 
-    res
+    res << getCommonInfo(layer, indent)
         << indent << "Source MAC address: " << ethernetLayer->getSourceMac() << std::endl
         << indent << "Destination MAC address: " << ethernetLayer->getDestMac() << std::endl
         << indent << "Ether type = 0x" << std::hex << pcpp::netToHost16(ethernetLayer->getEthHeader()->etherType) << std::endl;
@@ -59,7 +72,7 @@ std::string parseIPv4(pcpp::Layer* layer, std::string indent)
     pcpp::IPv4Layer* ipLayer = static_cast<pcpp::IPv4Layer*>(layer);
     std::stringstream res;
 
-    res
+    res << getCommonInfo(layer, indent)
         << indent << "Source IP address: " << ipLayer->getSrcIPAddress() << std::endl
         << indent << "Destination IP address: " << ipLayer->getDstIPAddress() << std::endl
         << indent << "IP ID: 0x" << std::hex << pcpp::netToHost16(ipLayer->getIPv4Header()->ipId) << std::endl
@@ -72,7 +85,7 @@ std::string parseIPv6(pcpp::Layer* layer, std::string indent)
     pcpp::IPv6Layer* ipLayer = static_cast<pcpp::IPv6Layer*>(layer);
     std::stringstream res;
 
-    res
+    res << getCommonInfo(layer, indent)
         << indent << "Source IP address: " << ipLayer->getSrcIPAddress() << std::endl
         << indent << "Destination IP address: " << ipLayer->getDstIPAddress() << std::endl;
     return res.str();
@@ -106,7 +119,7 @@ std::string parseTCP(pcpp::Layer* layer, std::string indent)
     pcpp::TcpLayer* tcpLayer = static_cast<pcpp::TcpLayer*>(layer);
     std::stringstream res;
 
-    res 
+    res << getCommonInfo(layer, indent)
         << indent << "Source TCP port: " << tcpLayer->getSrcPort() << std::endl
         << indent << "Destination TCP port: " << tcpLayer->getDstPort() << std::endl
         << indent << "Window size: " << pcpp::netToHost16(tcpLayer->getTcpHeader()->windowSize) << std::endl
@@ -120,7 +133,7 @@ std::string parseUDP(pcpp::Layer* layer, std::string indent)
     pcpp::UdpLayer* udpLayer = static_cast<pcpp::UdpLayer*>(layer);
     std::stringstream res;
 
-    res
+    res << getCommonInfo(layer, indent)
         << indent << "Source TCP port: " << udpLayer->getSrcPort() << std::endl
         << indent << "Destination TCP port: " << udpLayer->getDstPort() << std::endl
         << indent << "Window size: " << pcpp::netToHost16(udpLayer->getUdpHeader()->headerChecksum) << std::endl;
@@ -146,12 +159,16 @@ std::string parseHTTP(pcpp::Layer* layer, std::string indent)
     pcpp::HttpRequestLayer* httpRequestLayer = static_cast<pcpp::HttpRequestLayer*>(layer);
     std::stringstream res;
 
-    res
+    pcpp::HeaderField* host = httpRequestLayer->getFieldByName(PCPP_HTTP_HOST_FIELD);
+    pcpp::HeaderField* user_agent = httpRequestLayer->getFieldByName(PCPP_HTTP_USER_AGENT_FIELD);
+    pcpp::HeaderField* cookie = httpRequestLayer->getFieldByName(PCPP_HTTP_COOKIE_FIELD);
+
+    res << getCommonInfo(layer, indent)
         << indent << "HTTP method: " << printHttpMethod(httpRequestLayer->getFirstLine()->getMethod()) << std::endl
         << indent << "HTTP URI: " << httpRequestLayer->getFirstLine()->getUri() << std::endl
-        << indent << "HTTP host: " << httpRequestLayer->getFieldByName(PCPP_HTTP_HOST_FIELD)->getFieldValue() << std::endl
-        << indent << "HTTP user-agent: " << httpRequestLayer->getFieldByName(PCPP_HTTP_USER_AGENT_FIELD)->getFieldValue() << std::endl
-        << indent << "HTTP cookie: " << httpRequestLayer->getFieldByName(PCPP_HTTP_COOKIE_FIELD)->getFieldValue() << std::endl
+        << indent << "HTTP host: " << (host != NULL ? host->getFieldValue() : "NULL") << std::endl
+        << indent << "HTTP user-agent: " << (user_agent != NULL ? user_agent->getFieldValue() : "NULL") << std::endl
+        << indent << "HTTP cookie: " << (cookie != NULL ? cookie->getFieldValue() : "NULL") << std::endl
         << indent << "HTTP full URL: " << httpRequestLayer->getUrl() << std::endl;
 
     return res.str();
@@ -162,16 +179,16 @@ std::string parseLayerByProto(pcpp::Layer* layer, std::string indent) {
 
     switch (protoType)
     {
-    case pcpp::Ethernet:
-        return parseEthernet(layer, indent);
-    case pcpp::IPv4:
-        return parseIPv4(layer, indent);
-    case pcpp::IPv6:
-        return parseIPv6(layer, indent);
-    case pcpp::TCP:
-        return parseTCP(layer, indent);
-    case pcpp::UDP:
-        return parseUDP(layer, indent);
+    //case pcpp::Ethernet:
+    //    return parseEthernet(layer, indent);
+    //case pcpp::IPv4:
+    //    return parseIPv4(layer, indent);
+    //case pcpp::IPv6:
+    //    return parseIPv6(layer, indent);
+    //case pcpp::TCP:
+    //    return parseTCP(layer, indent);
+    //case pcpp::UDP:
+    //    return parseUDP(layer, indent);
     case pcpp::HTTPRequest:
         return parseHTTP(layer, indent);
     default:
@@ -188,21 +205,15 @@ static void onPacketArrives(pcpp::RawPacket* packet, pcpp::PcapLiveDevice* dev, 
     pcpp::Layer* curLayer;
     std::string indent;
     
-    std::cout << "---------------------\n";
+    // std::cout << "---------------------\n";
     for (curLayer = parsedPacket.getFirstLayer(), counter = 0; curLayer != NULL; curLayer = curLayer->getNextLayer(), counter++)
     {
         indent = mult('\t', counter);
         std::cout
-            << indent
-            << "Layer type: " << getProtocolTypeAsString(curLayer->getProtocol()) << "; "
-            << "Total data: " << curLayer->getDataLen() << " [bytes]; "
-            << "Layer data: " << curLayer->getHeaderLen() << " [bytes]; "
-            << "Layer payload: " << curLayer->getLayerPayloadSize() << " [bytes]"
-            << std::endl
             << parseLayerByProto(curLayer, indent);
         
     }
-    std::cout << "---------------------\n";
+    // std::cout << "---------------------\n";
 }
 
 void help() 
